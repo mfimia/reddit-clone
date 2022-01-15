@@ -11,6 +11,7 @@ export class PostResolver {
   posts(@Ctx() { em }: MyContext): Promise<Post[]> {
     return em.find(Post, {});
   }
+
   // Get a single post ---- Query = GET
   // Type: returns post or null
   @Query(() => Post, { nullable: true })
@@ -28,10 +29,27 @@ export class PostResolver {
   async createPost(
     @Arg("title") title: string,
     @Ctx() { em }: MyContext
-  ): // Returns a type promise that is type post or null
-  Promise<Post> {
+  ): Promise<Post> {
     const post = em.create(Post, { title });
     await em.persistAndFlush(post);
+    return post;
+  }
+
+  // Update a post ---- Mutation = POST (PUT in this case)
+  @Mutation(() => Post, { nullable: true })
+  async updatePost(
+    @Arg("id") id: number,
+    @Arg("title", () => String, { nullable: true }) title: string,
+    @Ctx() { em }: MyContext
+  ): Promise<Post | null> {
+    const post = await em.findOne(Post, { id });
+    if (!post) {
+      return null;
+    }
+    if (typeof title !== "undefined") {
+      post.title = title;
+      await em.persistAndFlush(post);
+    }
     return post;
   }
 }
