@@ -1,6 +1,6 @@
 import { Post } from "../entities/Post";
 import { MyContext } from "src/types";
-import { Arg, Ctx, Int, Mutation, Query, Resolver } from "type-graphql";
+import { Arg, Ctx, Mutation, Query, Resolver } from "type-graphql";
 
 // Decorate the class with resolver from graphql
 @Resolver()
@@ -17,14 +17,14 @@ export class PostResolver {
   @Query(() => Post, { nullable: true })
   post(
     // Takes id as argument (we can use the name that we want in the first argument)
-    @Arg("id", () => Int) id: number,
+    @Arg("id") id: number,
     @Ctx() { em }: MyContext
   ): // Returns a type promise that is type post or null
   Promise<Post | null> {
     return em.findOne(Post, { id });
   }
 
-  // Add a post ---- Mutation = POST
+  // Add a post ---- Mutation = POST/PUT/DELETE
   @Mutation(() => Post)
   async createPost(
     @Arg("title") title: string,
@@ -35,7 +35,7 @@ export class PostResolver {
     return post;
   }
 
-  // Update a post ---- Mutation = POST (PUT in this case)
+  // Update a post ---- Mutation = POST/PUT/DELETE
   @Mutation(() => Post, { nullable: true })
   async updatePost(
     @Arg("id") id: number,
@@ -53,7 +53,7 @@ export class PostResolver {
     return post;
   }
 
-  // Update a post ---- Mutation = POST (PUT in this case)
+  // Delete a post ---- Mutation = POST/PUT/DELETE
   @Mutation(() => Boolean, { nullable: true })
   async deletePost(
     @Arg("id") id: number,
