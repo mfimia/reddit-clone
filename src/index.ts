@@ -5,9 +5,15 @@ import { __prod__ } from "./constants";
 import mikroOrmConfig from "./mikro-orm.config";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
+import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
 import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
+import { UserResolver } from "./resolvers/user";
+import { createClient } from "redis";
+import session from "express-session";
+import connectRedis from "connect-redis";
+import { MyContext } from "./types";
 
 // Wrapping everything into main function to use async syntax with ease
 const main = async () => {
@@ -18,13 +24,40 @@ const main = async () => {
 
   const app = express();
 
+  const RedisStore = connectRedis(session);
+  const redisClient = createClient();
+
+  // Session middleware
+  app.use(
+    session({
+      name: "qid",
+      // We tell the express session that we are using redis
+      store: new RedisStore({
+        client: redisClient,
+        // Make session last forever
+        disableTouch: true,
+      }),
+      cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 365 * 10, // 10 years
+        httpOnly: true,
+        sameSite: "lax", // csrf
+        secure: __prod__, // cookie only works in https (in prod)
+      },
+      // Creates a session only when storing data
+      saveUninitialized: false,
+      secret: "randomstring",
+      resave: false,
+    })
+  );
+
   // Set up Apollo
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver],
       validate: false,
     }),
-    context: () => ({ em: orm.em }),
+    plugins: [ApolloServerPluginLandingPageGraphQLPlayground],
+    context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
   });
 
   // Start apollo server
@@ -33,8 +66,8 @@ const main = async () => {
   // Create a graphQL endpoint on express
   apolloServer.applyMiddleware({ app });
 
-  app.listen(5000, () => {
-    console.log("server started on localhost:5000");
+  app.listen(4000, () => {
+    console.log("server started on localhost:4000");
   });
 
   // ------Create a post------
@@ -42,7 +75,7 @@ const main = async () => {
   // // Insert post into database
   // await orm.em.persistAndFlush(post);
 
-  // -----Checkout posts-----
+  // -----GET posts-----
   // const posts = await orm.em.find(Post, {});
   // console.log(posts);
 };
