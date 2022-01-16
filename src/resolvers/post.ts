@@ -52,4 +52,22 @@ export class PostResolver {
     }
     return post;
   }
+
+  // Update a post ---- Mutation = POST (PUT in this case)
+  @Mutation(() => Boolean, { nullable: true })
+  async deletePost(
+    @Arg("id") id: number,
+    @Ctx() { em }: MyContext
+  ): Promise<boolean> {
+    try {
+      const post = await em.findOne(Post, { id });
+      if (!post) {
+        return false;
+      }
+      await em.nativeDelete(Post, { id });
+    } catch {
+      return false;
+    }
+    return true;
+  }
 }
