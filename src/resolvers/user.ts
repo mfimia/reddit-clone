@@ -8,6 +8,7 @@ import {
   Field,
   Ctx,
   ObjectType,
+  Query,
 } from "type-graphql";
 import argon2 from "argon2";
 
@@ -20,6 +21,8 @@ class UsernamePasswordInput {
   password: string;
 }
 
+// We will return this object everytime there is an error
+// Error contains two properties: field of the error and message
 @ObjectType()
 class FieldError {
   @Field()
@@ -31,9 +34,11 @@ class FieldError {
 
 // Object type for returns
 // Returns error array if errors, or user type if user
+// Contains the Field error and user that we created
 @ObjectType()
 class UserResponse {
   @Field(() => [FieldError], { nullable: true })
+  // Setting errors as an array because there could be more than one
   errors?: FieldError[];
 
   @Field(() => User, { nullable: true })
@@ -43,21 +48,70 @@ class UserResponse {
 // Decorate the class with resolver from graphql
 @Resolver()
 export class UserResolver {
+  // Me query
+  @Query(() => User, { nullable: true })
+  async me(@Ctx() { req, em }: MyContext) {
+    // You are not logged in
+    if (!req.session.userId) {
+      return null;
+    }
+    // If the user is logged in, we fetch it and return it
+    // We know if an user is logged in = if they have cookie
+    const user = await em.findOne(User, { id: req.session.userId });
+    return user;
+  }
+
   // Add an user
-  @Mutation(() => User)
+  @Mutation(() => UserResponse)
   async register(
     // Different way of passing argument. Creating a class and passing it
     @Arg("options") options: UsernamePasswordInput,
     @Ctx() { em }: MyContext
-  ) {
+  ): Promise<UserResponse> {
+    if (options.username.length <= 2) {
+      return {
+        errors: [
+          {
+            field: "username",
+            message: "length must be greater than 2",
+          },
+        ],
+      };
+    }
+
+    if (options.password.length <= 3) {
+      return {
+        errors: [
+          {
+            field: "password",
+            message: "length must be greater than 3",
+          },
+        ],
+      };
+    }
+
     // Hash the password before storing it, for extra protection
     const hashedPassword = await argon2.hash(options.password);
     const user = em.create(User, {
       username: options.username,
       password: hashedPassword,
     });
-    await em.persistAndFlush(user);
-    return user;
+    try {
+      await em.persistAndFlush(user);
+    } catch (err) {
+      if (err.code === "23505") {
+        return {
+          errors: [
+            {
+              field: "username",
+              message: "username already taken",
+            },
+          ],
+        };
+      }
+    }
+    // Return the user in the object because we have a response object
+    return { user };
   }
 
   // Login
@@ -65,7 +119,7 @@ export class UserResolver {
   async login(
     // Takes same arguments as registration
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
     // Try to find user, if it doesn't exist, return error
     const user = await em.findOne(User, { username: options.username });
@@ -91,8 +145,11 @@ export class UserResolver {
         ],
       };
     }
-    return {
-      user,
-    };
+
+    // This is the data we want to store in the session
+    // We can add more stuff
+    req.session.userId = user.id;
+
+    return { user };
   }
 }
