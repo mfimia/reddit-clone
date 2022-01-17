@@ -14,6 +14,7 @@ import { createClient } from "redis";
 import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
+import cors from "cors";
 
 // Wrapping everything into main function to use async syntax with ease
 const main = async () => {
@@ -26,6 +27,14 @@ const main = async () => {
 
   const RedisStore = connectRedis(session);
   const redisClient = createClient();
+
+  // Avoid cors policy errors (all routes)
+  app.use(
+    cors({
+      origin: "http://localhost:3000",
+      credentials: true,
+    })
+  );
 
   // Session middleware
   app.use(
@@ -64,7 +73,10 @@ const main = async () => {
   await apolloServer.start();
 
   // Create a graphQL endpoint on express
-  apolloServer.applyMiddleware({ app });
+  apolloServer.applyMiddleware({
+    app,
+    cors: false,
+  });
 
   app.listen(4000, () => {
     console.log("server started on localhost:4000");
