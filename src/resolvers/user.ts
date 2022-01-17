@@ -11,6 +11,8 @@ import {
   Query,
 } from "type-graphql";
 import argon2 from "argon2";
+// ---> Import for alternative query
+// import { EntityManager } from "@mikro-orm/postgresql";
 
 // Input type for arguments
 @InputType()
@@ -96,8 +98,17 @@ export class UserResolver {
       username: options.username,
       password: hashedPassword,
     });
+    // let user;
     try {
       await em.persistAndFlush(user);
+      // ------> Another way to write "persistAndFlush" command. With QueryBuilder
+      // const [user] = await (em as EntityManager).createQueryBuilder(User).getKnexQuery().insert({
+      //   username: options.username,
+      //   password: options.password,
+      //   created_at: new Date(),
+      //   updated_at: new Date(),
+      // }).returning("*");
+      // user = result[0]
     } catch (err) {
       if (err.code === "23505") {
         return {
