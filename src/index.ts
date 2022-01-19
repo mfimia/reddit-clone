@@ -10,7 +10,7 @@ import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from "./resolvers/user";
-import { createClient } from "redis";
+import Redis from "ioredis";
 import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
@@ -26,7 +26,7 @@ const main = async () => {
   const app = express();
 
   const RedisStore = connectRedis(session);
-  const redisClient = createClient();
+  const redis = Redis();
 
   // Avoid cors policy errors (all routes)
   app.use(
@@ -42,7 +42,7 @@ const main = async () => {
       name: COOKIE_NAME,
       // We tell the express session that we are using redis
       store: new RedisStore({
-        client: redisClient,
+        client: redis,
         // Make session last forever
         disableTouch: true,
       }),
@@ -66,7 +66,7 @@ const main = async () => {
       validate: false,
     }),
     plugins: [ApolloServerPluginLandingPageGraphQLPlayground],
-    context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
+    context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis }),
   });
 
   // Start apollo server
