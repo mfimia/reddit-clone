@@ -1,10 +1,9 @@
 import { User } from "../entities/User";
-import { MyContext } from "src/types";
+import { MyContext } from "../types";
 import {
   Resolver,
   Mutation,
   Arg,
-  InputType,
   Field,
   Ctx,
   ObjectType,
@@ -12,17 +11,10 @@ import {
 } from "type-graphql";
 import argon2 from "argon2";
 import { COOKIE_NAME } from "../constants";
-// ---> Import for alternative query
-// import { EntityManager } from "@mikro-orm/postgresql";
-
-// Input type for arguments
-@InputType()
-class UsernamePasswordInput {
-  @Field()
-  username: string;
-  @Field()
-  password: string;
-}
+import { UsernamePasswordInput } from "./UsernamePasswordInput";
+import { validateRegister } from "../utils/validateRegister";
+import { sendEmail } from "src/utils/sendEmail";
+import { v4 } from "uuid";
 
 // We will return this object everytime there is an error
 // Error contains two properties: field of the error and message
@@ -51,6 +43,25 @@ class UserResponse {
 // Decorate the class with resolver from graphql
 @Resolver()
 export class UserResolver {
+  @Mutation(() => Boolean)
+  async forgotPassword(@Arg("email") email: string, @Ctx() { em }: MyContext) {
+    const user = await em.findOne(User, { email });
+    if (!user) {
+      // if no user back. email is not in the db
+      // in this case we return true but dont actually send an email
+      return true;
+    }
+
+    // uuid library gives us random string
+    const token = v4();
+
+    sendEmail(
+      email,
+      `<a href="http://localhost:3000/change-password/${token}">reset password </a>`
+    );
+    return true;
+  }
+
   // Me query
   @Query(() => User, { nullable: true })
   async me(@Ctx() { req, em }: MyContext) {
@@ -69,35 +80,21 @@ export class UserResolver {
   async register(
     // Different way of passing argument. Creating a class and passing it
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
-    if (options.username.length <= 2) {
-      return {
-        errors: [
-          {
-            field: "username",
-            message: "length must be greater than 2",
-          },
-        ],
-      };
-    }
-
-    if (options.password.length <= 3) {
-      return {
-        errors: [
-          {
-            field: "password",
-            message: "length must be greater than 3",
-          },
-        ],
-      };
+    const errors = validateRegister(options);
+    if (errors) {
+      return { errors };
     }
 
     // Hash the password before storing it, for extra protection
     const hashedPassword = await argon2.hash(options.password);
     const user = em.create(User, {
       username: options.username,
+      email: options.email,
       password: hashedPassword,
+      created_at: new Date(),
+      updated_at: new Date(),
     });
     // let user;
     try {
@@ -105,6 +102,7 @@ export class UserResolver {
       // ------> Another way to write "persistAndFlush" command. With QueryBuilder
       // const [user] = await (em as EntityManager).createQueryBuilder(User).getKnexQuery().insert({
       //   username: options.username,
+      //   email: options.email,
       //   password: options.password,
       //   created_at: new Date(),
       //   updated_at: new Date(),
@@ -130,23 +128,30 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async login(
     // Takes same arguments as registration
-    @Arg("options") options: UsernamePasswordInput,
+    @Arg("usernameOrEmail") usernameOrEmail: string,
+    @Arg("password") password: string,
     @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
     // Try to find user, if it doesn't exist, return error
-    const user = await em.findOne(User, { username: options.username });
+    const user = await em.findOne(
+      User,
+      // if there is an "@", we assume its an email, otherwise its an username
+      usernameOrEmail.includes("@")
+        ? { email: usernameOrEmail }
+        : { username: usernameOrEmail }
+    );
     if (!user) {
       return {
         errors: [
           {
-            field: "username",
-            message: "username doesn't exist",
+            field: "usernameOrEmail",
+            message: "username/email doesn't exist",
           },
         ],
       };
     }
     // Verify password. If wrong, return error
-    const valid = await argon2.verify(user.password, options.password);
+    const valid = await argon2.verify(user.password, password);
     if (!valid) {
       return {
         errors: [
