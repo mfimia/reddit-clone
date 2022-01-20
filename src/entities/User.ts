@@ -4,9 +4,11 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { Post } from "./Post";
 
 // Stacking decorators
 @ObjectType()
@@ -18,14 +20,6 @@ export class User extends BaseEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Field(() => String)
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @Field(() => String)
-  @UpdateDateColumn()
-  updatedAt: Date;
-
   @Field()
   @Column({ unique: true })
   username!: string;
@@ -36,4 +30,16 @@ export class User extends BaseEntity {
 
   @Column()
   password!: string;
+
+  // one user can do many posts
+  @OneToMany(() => Post, (post) => post.creator)
+  posts: Post[];
+
+  @Field(() => String)
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @Field(() => String)
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
