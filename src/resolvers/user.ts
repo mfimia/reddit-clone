@@ -47,7 +47,7 @@ export class UserResolver {
   async changePassword(
     @Arg("token") token: string,
     @Arg("newPassword") newPassword: string,
-    @Ctx() { redis, em, req }: MyContext
+    @Ctx() { redis, req }: MyContext
   ): Promise<UserResponse> {
     // basic password validation
     if (newPassword.length <= 3) {
@@ -74,8 +74,10 @@ export class UserResolver {
         ],
       };
     }
-    // we find the user. check the id by converting it into number
-    const user = await em.findOne(User, { id: parseInt(userId) });
+    // convert id into num
+    const userIdNum = parseInt(userId);
+    // we find the user by id
+    const user = await User.findOne(userIdNum);
 
     // if the user doesnt exist (unlikely) we send back a token error again
     if (!user) {
@@ -91,8 +93,10 @@ export class UserResolver {
 
     // if no errors, change the old passeord with the new password
     // save new password to database
-    user.password = await argon2.hash(newPassword);
-    await em.persistAndFlush(user);
+    await User.update(
+      { id: userIdNum },
+      { password: await argon2.hash(newPassword) }
+    );
 
     // token is removed from redis
     // user cant change password again with same token
@@ -109,9 +113,9 @@ export class UserResolver {
   @Mutation(() => Boolean)
   async forgotPassword(
     @Arg("email") email: string,
-    @Ctx() { em, redis }: MyContext
+    @Ctx() { redis }: MyContext
   ) {
-    const user = await em.findOne(User, { email });
+    const user = await User.findOne({ where: { email } });
     if (!user) {
       // if no user back. email is not in the db
       // in this case we return true but dont actually send an email
@@ -142,15 +146,14 @@ export class UserResolver {
 
   // Me query
   @Query(() => User, { nullable: true })
-  async me(@Ctx() { req, em }: MyContext) {
+  me(@Ctx() { req }: MyContext) {
     // You are not logged in
     if (!req.session.userId) {
       return null;
     }
     // If the user is logged in, we fetch it and return it
     // We know if an user is logged in = if they have cookie
-    const user = await em.findOne(User, { id: req.session.userId });
-    return user;
+    return User.findOne(req.session.userId);
   }
 
   // Add an user
@@ -158,7 +161,7 @@ export class UserResolver {
   async register(
     // Different way of passing argument. Creating a class and passing it
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     const errors = validateRegister(options);
     if (errors) {
@@ -167,25 +170,13 @@ export class UserResolver {
 
     // Hash the password before storing it, for extra protection
     const hashedPassword = await argon2.hash(options.password);
-    const user = em.create(User, {
-      username: options.username,
-      email: options.email,
-      password: hashedPassword,
-      created_at: new Date(),
-      updated_at: new Date(),
-    });
-    // let user;
+    let user;
     try {
-      await em.persistAndFlush(user);
-      // ------> Another way to write "persistAndFlush" command. With QueryBuilder
-      // const [user] = await (em as EntityManager).createQueryBuilder(User).getKnexQuery().insert({
-      //   username: options.username,
-      //   email: options.email,
-      //   password: options.password,
-      //   created_at: new Date(),
-      //   updated_at: new Date(),
-      // }).returning("*");
-      // user = result[0]
+      user = await User.create({
+        username: options.username,
+        email: options.email,
+        password: hashedPassword,
+      }).save();
     } catch (err) {
       if (err.code === "23505") {
         return {
@@ -198,6 +189,11 @@ export class UserResolver {
         };
       }
     }
+    // store user id session
+    // this will set a cookie on the user
+    // keep them logged in
+    req.session.userId = user?.id;
+
     // Return the user in the object because we have a response object
     return { user };
   }
@@ -208,15 +204,14 @@ export class UserResolver {
     // Takes same arguments as registration
     @Arg("usernameOrEmail") usernameOrEmail: string,
     @Arg("password") password: string,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     // Try to find user, if it doesn't exist, return error
-    const user = await em.findOne(
-      User,
+    const user = await User.findOne(
       // if there is an "@", we assume its an email, otherwise its an username
       usernameOrEmail.includes("@")
-        ? { email: usernameOrEmail }
-        : { username: usernameOrEmail }
+        ? { where: { email: usernameOrEmail } }
+        : { where: { username: usernameOrEmail } }
     );
     if (!user) {
       return {
