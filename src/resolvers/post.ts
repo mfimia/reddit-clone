@@ -3,11 +3,13 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
   Int,
   Mutation,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import { MyContext } from "../types";
@@ -23,8 +25,15 @@ class PostInput {
 }
 
 // Decorate the class with resolver from graphql
-@Resolver()
+@Resolver(Post)
 export class PostResolver {
+  // this creates a text snippet field
+  // we can request the snippet instead of the text (to avoid huge chunks in homepage)
+  @FieldResolver(() => String)
+  textSnippet(@Root() root: Post) {
+    return root.text.slice(0, 50);
+  }
+
   // GraphQL query syntax that returns all posts, using Post entity
   @Query(() => [Post])
   // Take em from context and find all posts
