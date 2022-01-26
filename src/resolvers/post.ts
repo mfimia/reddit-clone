@@ -4,6 +4,7 @@ import {
   Ctx,
   Field,
   InputType,
+  Int,
   Mutation,
   Query,
   Resolver,
@@ -11,6 +12,7 @@ import {
 } from "type-graphql";
 import { MyContext } from "../types";
 import { isAuth } from "../middleware/isAuth";
+import { getConnection } from "typeorm";
 
 @InputType()
 class PostInput {
@@ -26,9 +28,29 @@ export class PostResolver {
   // GraphQL query syntax that returns all posts, using Post entity
   @Query(() => [Post])
   // Take em from context and find all posts
-  async posts(): Promise<Post[]> {
+  async posts(
+    @Arg("limit", () => Int) limit: number,
+    // cursor refers to what location in our data we want to point (similar to offset)
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+  ): Promise<Post[]> {
+    const realLimit = Math.min(50, limit);
+    // syntax from type orm docs
+    // query builder to get latests posts (50 || limit -> whichever smaller)
+
+    const qb = getConnection()
+      .getRepository(Post)
+      .createQueryBuilder("p")
+      // need to wrap the quotes with single quotes to make sure it respects case sensitivity
+      .orderBy('"createdAt"', "DESC")
+      .take(realLimit);
+    // conditionally check if there is a cursor and add it as a condition to SQL query
+    if (cursor) {
+      qb.where('"createdAt" < :cursor', {
+        cursor: new Date(parseInt(cursor)),
+      });
+    }
+    return qb.getMany();
     // await sleep(3000);
-    return Post.find();
   }
 
   // Get a single post ---- Query = GET
