@@ -1,22 +1,23 @@
 // this first import is needed for typegraphql and typeorm to work
-import "reflect-metadata";
-import { COOKIE_NAME, __prod__ } from "./constants";
+import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
+import { ApolloServer } from "apollo-server-express";
+import connectRedis from "connect-redis";
+import cors from "cors";
 // import { Post } from "./entities/Post";
 import express from "express";
-import { ApolloServer } from "apollo-server-express";
-import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
+import session from "express-session";
+import Redis from "ioredis";
+import "reflect-metadata";
 import { buildSchema } from "type-graphql";
+import { createConnection } from "typeorm";
+import { COOKIE_NAME, __prod__ } from "./constants";
+import { Post } from "./entities/Post";
+import { User } from "./entities/User";
 import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from "./resolvers/user";
-import Redis from "ioredis";
-import session from "express-session";
-import connectRedis from "connect-redis";
 import { MyContext } from "./types";
-import cors from "cors";
-import { createConnection } from "typeorm";
-import { Post } from "./entities/Post";
-import { User } from "./entities/User";
+import path from "path";
 
 // Wrapping everything into main function to use async syntax with ease
 const main = async () => {
@@ -27,8 +28,10 @@ const main = async () => {
     password: "postgres",
     logging: true,
     synchronize: true,
+    migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User],
   });
+  await conn.runMigrations();
 
   const app = express();
 
